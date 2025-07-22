@@ -1,0 +1,169 @@
+# Certificate Setup Guide
+
+Cookie Proxy requires a trusted Certificate Authority (CA) to generate HTTPS certificates dynamically. This guide covers setup for different platforms and browsers.
+
+## Quick Start
+
+**The proxy automatically uses your mkcert CA if available.** If you already have mkcert installed and working, just run:
+
+```bash
+./cookie-proxy -d your-domain.com --log-level debug
+```
+
+Skip to [Browser Setup](#browser-setup) below.
+
+## Installing mkcert
+
+### macOS
+```bash
+# Using Homebrew
+brew install mkcert
+
+# Install the CA in system trust store
+mkcert -install
+```
+
+### Windows
+```bash
+# Using Chocolatey
+choco install mkcert
+
+# Or using Scoop
+scoop bucket add extras
+scoop install mkcert
+
+# Install the CA in system trust store
+mkcert -install
+```
+
+### Linux
+```bash
+# Ubuntu/Debian
+sudo apt install libnss3-tools
+wget -O mkcert https://dl.filippo.io/mkcert/latest?for=linux/amd64
+chmod +x mkcert
+sudo mv mkcert /usr/local/bin/
+
+# Install the CA in system trust store
+mkcert -install
+```
+
+## Browser Setup
+
+### Chrome, Safari, Edge (System Trust Store)
+These browsers use the system certificate store. If you ran `mkcert -install`, **no additional setup needed**.
+
+### Firefox (Manual Import Required)
+Firefox uses its own certificate store and requires manual import:
+
+#### macOS/Linux
+1. **Find your mkcert CA:**
+   ```bash
+   mkcert -CAROOT
+   # Example output: /Users/username/Library/Application Support/mkcert
+   ```
+
+2. **Firefox Settings** → **Privacy & Security**
+3. Scroll to **Certificates** → click **View Certificates**
+4. **Authorities** tab → click **Import...**
+5. Navigate to the CA root directory and select `rootCA.pem`
+6. Check **"Trust this CA to identify websites"**
+7. Click **OK** and **restart Firefox**
+
+#### Windows
+1. **Find your mkcert CA:**
+   ```cmd
+   mkcert -CAROOT
+   # Example output: C:\Users\username\AppData\Local\mkcert
+   ```
+
+2. Follow the same Firefox import steps above, selecting `rootCA.pem` from the CA root directory.
+
+## Proxy Setup
+
+### Default (Automatic mkcert Detection)
+```bash
+./cookie-proxy -d saas.example.com
+```
+The proxy automatically finds and uses your mkcert CA.
+
+### Custom CA Certificate
+```bash
+./cookie-proxy -d saas.example.com \
+  --ca-cert /path/to/your-ca.pem \
+  --ca-key /path/to/your-ca-key.pem
+```
+
+### Multiple Domains
+```bash
+./cookie-proxy -d api.example.com,auth.example.com
+```
+
+## Browser Proxy Configuration
+
+Configure your browser to use automatic proxy configuration:
+```
+http://localhost:8080/proxy.pac
+```
+
+**Firefox:**
+1. **Settings** → **General** → **Network Settings** → **Settings**
+2. Select **Automatic proxy configuration URL**
+3. Enter: `http://localhost:8080/proxy.pac`
+4. **OK** and restart Firefox
+
+**Chrome/Safari:**
+- Use system proxy settings or browser-specific proxy configuration
+- Set automatic proxy URL to: `http://localhost:8080/proxy.pac`
+
+## Verification
+
+1. Start the proxy:
+   ```bash
+   ./cookie-proxy -d your-domain.com --log-level debug
+   ```
+
+2. You should see:
+   ```
+   INFO CA certificate loaded for dynamic cert generation
+   INFO HTTPS MITM enabled with dynamic certificate generation
+   INFO Starting HTTPS cookie proxy pac_url=http://127.0.0.1:8080/proxy.pac
+   ```
+
+3. Visit `https://your-domain.com` in your browser
+4. You should see:
+   ```
+   DEBUG Generating certificate for domain domain=your-domain.com
+   DEBUG Generated and cached certificate domain=your-domain.com
+   ```
+
+5. **No certificate warnings** should appear in your browser
+
+## Troubleshooting
+
+### "Unknown Certificate" Error
+- **Chrome/Safari:** Run `mkcert -install` to add CA to system trust store
+- **Firefox:** Manually import the CA certificate as described above
+- **Custom CA:** Verify the CA certificate paths are correct
+
+### "mkcert CA not found" Error
+- Install mkcert: `brew install mkcert` (macOS) or equivalent for your platform
+- Run `mkcert -install` to create the CA
+- Or provide custom CA with `--ca-cert` and `--ca-key` flags
+
+### Certificate Still Not Trusted
+- **Restart your browser** after importing certificates
+- **Check CA location:** Run `mkcert -CAROOT` to verify the CA location
+- **Firefox:** Ensure you checked "Trust this CA to identify websites" during import
+
+### WSL2 Certificate Issues
+- Run `mkcert -install` inside WSL2
+- Import the WSL2 CA certificate into Windows browsers
+- CA location in WSL2: `~/.local/share/mkcert/` or similar
+
+## Security Notes
+
+- **Development use only:** Never use these certificates in production
+- **CA security:** The CA private key can sign certificates for any domain
+- **Firefox isolation:** Firefox's separate certificate store provides additional security isolation
+- **Temporary certificates:** Generated certificates are cached in memory only and cleared on restart

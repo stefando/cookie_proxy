@@ -1,93 +1,94 @@
-# Cookie Proxy Development Instructions
+# HTTPS Cookie Proxy - Technical Documentation
 
-## Project Overview
-Development authentication proxy that eliminates cross-origin authentication pain for local development by automatically capturing session cookies from browser login flows and injecting them into API requests.
+## Overview
+HTTPS man-in-the-middle proxy with dynamic certificate generation that captures session cookies from login flows and injects them into subsequent API requests for local development.
 
-## Dependencies and Tools
+## Dependencies
 - Go 1.24
-- Required packages: 
-  - `github.com/elazarl/goproxy v1.7.2`
-  - `github.com/spf13/cobra v1.9.1`
-  - `github.com/sirupsen/logrus v1.9.3`
-- Build command: `go build -o cookie-proxy .`
-- Binary location: `./cookie-proxy`
+- `github.com/elazarl/goproxy v1.7.2`
+- `github.com/spf13/cobra v1.9.1` 
+- `github.com/sirupsen/logrus v1.9.3`
 
-## Implementation Status: COMPLETE ✅
-All core functionality implemented in single `main.go` file (~381 lines) with security compliance and comprehensive testing.
-
-## CLI Interface
+## Build & Run
 ```bash
-# Basic usage
-cookie-proxy --domains saas.cmddev.stefando.me
+go build -o cookie-proxy .
 
-# Multiple domains and cookies
-cookie-proxy --domains api.example.com,auth.example.com --cookies session_id,auth_token
+# Automatic mkcert CA detection (recommended)
+./cookie-proxy --domains saas.cmddev.stefando.me --log-level debug
 
-# Custom port and debug logging
-cookie-proxy --domains myapi.com --port 9090 --log-level debug
+# Custom CA certificate
+./cookie-proxy \
+  --domains saas.cmddev.stefando.me \
+  --ca-cert /path/to/ca.pem \
+  --ca-key /path/to/ca-key.pem \
+  --log-level debug
 ```
 
 ## CLI Flags
-- `-d, --domains strings`: Domains to manage (required)
-- `-c, --cookies strings`: Cookie names to intercept (default: session_id)
-- `-p, --port int`: Proxy port (default: 8080)
-- `--bind-address string`: IP address to bind to (default: 127.0.0.1 for localhost only)
-- `--log-level string`: Logging level (debug, info, warn, error, default: info)
+- `--domains`: HTTPS domains to intercept (required)
+- `--ca-cert`: CA certificate file path (auto-detects mkcert CA if not provided) 
+- `--ca-key`: CA private key file path (auto-detects mkcert CA if not provided)
+- `--cookies`: Cookie names to capture (default: session_id)
+- `--port`: Proxy port (default: 8080)
+- `--log-level`: debug, info, warn, error (default: info)
 
-## Core Components (Implemented)
-1. **PAC Server**: Serves `/proxy.pac` with selective domain routing
-2. **Cookie Interceptor**: Captures Set-Cookie headers with security validation
-3. **Request Enhancer**: Injects stored cookies into requests for managed domains
-4. **Cookie Store**: Thread-safe storage using `*http.Cookie` with domain isolation and lazy expiration cleanup
-5. **Cookie Security**: SameSite=Strict and Secure flag validation with logging
-6. **Logout Detection**: Clears cookies on 401/403 responses
-7. **CLI Interface**: Full cobra-based CLI with help and validation
-8. **Structured Logging**: Logrus with detailed request/response and security logging
+## Certificate Management
+### Automatic mkcert Detection
+Proxy automatically detects mkcert CA in standard locations:
+- **macOS**: `~/Library/Application Support/mkcert/`
+- **Linux**: `~/.local/share/mkcert/`
+- **Windows**: `%LOCALAPPDATA%\mkcert\`
+
+### Dynamic Certificate Generation
+- Certificates generated on-demand for any requested domain
+- Cached in memory for performance (cleared on restart)
+- Signed by CA for browser trust
+- Support for both domain names and IP addresses
+
+## Browser Configuration
+**Automatic proxy configuration**: `http://localhost:8080/proxy.pac`
+
+**Certificate trust**:
+- **Chrome/Safari/Edge**: Use system trust store (mkcert handles automatically)
+- **Firefox**: Manual CA import required (see `CERTIFICATE_SETUP.md`)
 
 ## How It Works
-1. **Cookie Theft**: Intercepts `Set-Cookie` headers using `http.ParseSetCookie()` with security validation
-2. **Security Checks**: Skips SameSite=Strict and Secure cookies on HTTP with warning logs
-3. **Cookie Storage**: Thread-safe storage per domain using full `*http.Cookie` structs with proper expiration handling
-4. **Cookie Injection**: Adds stored cookies to subsequent requests for same domain
-5. **PAC Configuration**: Browser auto-config to only proxy managed domains
-6. **Automatic Cleanup**: Lazy cleanup of expired cookies during retrieval, plus clears on 401/403 responses
-
-## Browser Setup
-Configure automatic proxy: `http://localhost:8080/proxy.pac`
+1. **HTTPS MITM**: Terminates HTTPS connections using dynamically generated certificates
+2. **Cookie Capture**: Extracts `Set-Cookie` headers from decrypted HTTPS responses 
+3. **Cookie Injection**: Adds stored cookies to future HTTPS requests for same domain
+4. **Selective Proxying**: Only specified domains proxied (PAC file), everything else direct
+5. **Security Filtering**: 
+   - Skips SameSite=Strict cookies (not suitable for cross-origin)
+   - Rejects cookies with negative MaxAge (immediate deletion)
 
 ## Architecture Details
-- **Single package**: All code in `main.go` (~381 lines)
-- **HTTP-only proxy**: Browser → HTTP proxy → HTTPS target
-- **Thread-safe**: Concurrent cookie storage with mutex protection using `*http.Cookie`
-- **Selective proxying**: Only managed domains go through proxy
-- **Zero persistence**: In-memory storage, clears on restart
-- **RFC compliant**: Uses `http.ParseSetCookie()` for parsing and `*http.Cookie` for storage
-- **Cookie security**: Validates SameSite and Secure flags with clear logging
-- **Lazy expiration**: Automatic cleanup during cookie retrieval with proper time handling
-- **Network security**: Binds to localhost by default, configurable for WSL2 scenarios
+- **Dynamic HTTPS MITM**: Real-time certificate generation using CA signing
+- **PAC file server**: Serves `/proxy.pac` for browser auto-configuration
+- **Thread-safe operations**: Concurrent certificate caching and cookie storage
+- **Zero persistence**: All certificates and cookies stored in memory only
+- **Domain filtering**: Request/response handlers only process managed domains
+- **Certificate caching**: Generated certificates cached per domain for performance
 
-## Cookie Security Features
-- **SameSite=Strict Protection**: Automatically skips cookies with SameSite=Strict (not suitable for cross-origin)
-- **Secure Flag Validation**: Only processes Secure cookies for HTTPS requests
-- **Expiration Handling**: Respects `Expires` and `Max-Age` headers (including negative MaxAge for immediate deletion), defaults to 1 hour TTL
-- **Lazy Cleanup**: Expired cookies automatically removed during retrieval
-- **Security Logging**: Clear warning messages when cookies are skipped for security reasons
+## Security Features
+- **Certificate validation**: Proper CA chain construction for browser trust
+- **SameSite validation**: Automatically skips SameSite=Strict cookies with warnings
+- **Expiration handling**: Respects Max-Age and Expires headers, defaults to 1-hour TTL
+- **Negative MaxAge handling**: Properly rejects cookies marked for immediate deletion
+- **Memory-only storage**: No sensitive data persisted to disk
+- **Lazy cleanup**: Expired cookies automatically removed during retrieval
 
-## Common Security Warnings
-- `"Skipping SameSite=Strict cookie - not suitable for cross-origin use"` - Cookie explicitly forbids cross-site usage
-- `"Skipping Secure cookie for non-HTTPS request"` - Secure cookie cannot be used over HTTP
-- `"Cookie expired and removed"` - Cookie passed its Max-Age expiration time
-
-## Troubleshooting Authentication Issues
-1. **Check security logs** - Look for cookie skip warnings
-2. **Verify cookie names** - Ensure `--cookies` flag matches server's cookie names  
-3. **Check SameSite settings** - Server should use SameSite=Lax or SameSite=None for cross-origin
-4. **Verify HTTPS usage** - Secure cookies require HTTPS endpoints
-5. **Monitor expiration** - Cookies expire based on server's `Expires`/`Max-Age` settings (default: 1 hour)
-6. **Test expiration** - Use `go test -v` to run comprehensive expiration tests
+## Implementation Files
+- **main.go**: Core proxy logic, HTTP handlers, CLI interface
+- **certificates.go**: Dynamic certificate generation and CA management
+- **main_test.go**: Comprehensive test suite
 
 ## Testing
-- **Unit tests**: Run `go test -v` for comprehensive testing
-- **Expiration tests**: Verify lazy cleanup, MaxAge handling, and default TTL behavior
-- **Security tests**: Validate SameSite and Secure flag filtering
-- **Concurrency tests**: Ensure thread-safe operation under load
+- Run `go test -v` for comprehensive testing
+- ✅ **All 16 tests pass** - full test coverage with zero failures
+- Tests cover: cookie storage, expiration, security validation, concurrency, PAC generation, certificate parsing
+
+## Development Notes
+- **goproxy.Verbose = false**: Silenced for clean output
+- **GetCertificate callback**: Dynamic cert generation on TLS handshake
+- **Mutex protection**: Thread-safe certificate and cookie caching
+- **Error handling**: Graceful fallback for certificate generation failures
