@@ -110,11 +110,14 @@ http://localhost:8080/proxy.pac
 1. **Settings** → **General** → **Network Settings** → **Settings**
 2. Select **Automatic proxy configuration URL**
 3. Enter: `http://localhost:8080/proxy.pac`
-4. **OK** and restart Firefox
+4. **OK** and **restart Firefox completely**
 
 **Chrome/Safari:**
 - Use system proxy settings or browser-specific proxy configuration
 - Set automatic proxy URL to: `http://localhost:8080/proxy.pac`
+- **Restart browser completely** after proxy configuration changes
+
+**Important:** PAC configuration changes require a **full browser restart** to take effect. Simply reloading tabs is not sufficient.
 
 ## Verification
 
@@ -160,6 +163,102 @@ http://localhost:8080/proxy.pac
 - Run `mkcert -install` inside WSL2
 - Import the WSL2 CA certificate into Windows browsers
 - CA location in WSL2: `~/.local/share/mkcert/` or similar
+
+## Local Development Server Setup
+
+For testing the proxy with your frontend, you'll need an HTTPS development server using the same mkcert certificates.
+
+### Using http-server with mkcert
+
+```bash
+# Generate certificates for your local domain
+mkcert localhost 127.0.0.1 your-domain.local
+
+# Install http-server globally if not already installed
+npm install -g http-server
+
+# Start HTTPS server with CORS enabled
+npx http-server . -S -C localhost+2.pem -K localhost+2-key.pem -p 3000 --cors
+
+# Alternative with specific domain
+npx http-server . -S -C your-domain.local.pem -K your-domain.local-key.pem -p 3000 --cors
+```
+
+**Parameters explained:**
+- `-S`: Enable HTTPS
+- `-C`: Certificate file path
+- `-K`: Private key file path  
+- `-p 3000`: Port (adjust as needed)
+- `--cors`: Enable CORS headers (crucial for cross-origin requests)
+
+### Using Vite with mkcert
+
+```bash
+# Generate certificates
+mkcert localhost
+
+# Add to vite.config.js
+import { defineConfig } from 'vite'
+import fs from 'fs'
+
+export default defineConfig({
+  server: {
+    https: {
+      key: fs.readFileSync('./localhost-key.pem'),
+      cert: fs.readFileSync('./localhost.pem'),
+    },
+    host: 'localhost',
+    port: 3000,
+    cors: true
+  }
+})
+```
+
+### Using webpack-dev-server
+
+```bash
+# Generate certificates  
+mkcert localhost
+
+# Start with HTTPS and CORS
+npx webpack serve --https --https-key ./localhost-key.pem --https-cert ./localhost.pem --host localhost --port 3000
+```
+
+### Complete Development Setup
+
+1. **Generate certificates for both proxy and dev server:**
+   ```bash
+   # For your API domain (proxy will intercept)
+   mkcert api.yourdomain.com
+   
+   # For your local frontend
+   mkcert localhost 127.0.0.1
+   ```
+
+2. **Start your frontend dev server:**
+   ```bash
+   npx http-server . -S -C localhost+2.pem -K localhost+2-key.pem -p 3000 --cors
+   ```
+
+3. **Start the cookie proxy:**
+   ```bash
+   ./cookie-proxy --domains api.yourdomain.com
+   ```
+
+4. **Configure browser proxy:** `http://localhost:8080/proxy.pac`
+
+5. **Test the flow:**
+   - Visit `https://localhost:3000` (your frontend)
+   - Make requests to `https://api.yourdomain.com` (gets proxied)
+   - Login flow captures cookies automatically
+
+### Troubleshooting Development Setup
+
+**CORS Issues:** Always use `--cors` flag with http-server or equivalent CORS configuration in your dev server.
+
+**Mixed Content:** Ensure both your frontend and API endpoints use HTTPS to avoid mixed content warnings.
+
+**Certificate Mismatch:** Use the exact same domain names in both mkcert certificate generation and your application URLs.
 
 ## Security Notes
 
