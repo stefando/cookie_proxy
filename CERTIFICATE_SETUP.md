@@ -14,6 +14,8 @@ Skip to [Browser Setup](#browser-setup) below.
 
 ## Installing mkcert
 
+[mkcert](https://github.com/FiloSottile/mkcert) is a tool for creating locally-trusted development certificates.
+
 ### macOS
 ```bash
 # Using Homebrew
@@ -159,10 +161,61 @@ http://localhost:8080/proxy.pac
 - **Check CA location:** Run `mkcert -CAROOT` to verify the CA location
 - **Firefox:** Ensure you checked "Trust this CA to identify websites" during import
 
-### WSL2 Certificate Issues
-- Run `mkcert -install` inside WSL2
-- Import the WSL2 CA certificate into Windows browsers
-- CA location in WSL2: `~/.local/share/mkcert/` or similar
+### WSL2 Setup
+
+WSL2 requires special networking configuration for Windows browsers to access the proxy.
+
+#### Certificate Setup
+1. **Install mkcert inside WSL2:**
+   ```bash
+   # Ubuntu/Debian in WSL2
+   sudo apt install libnss3-tools
+   wget -O mkcert https://dl.filippo.io/mkcert/latest?for=linux/amd64
+   chmod +x mkcert && sudo mv mkcert /usr/local/bin/
+   mkcert -install
+   ```
+
+2. **Share CA certificate with Windows:**
+   ```bash
+   # Find WSL2 CA location
+   mkcert -CAROOT
+   # Copy to Windows accessible location
+   cp $(mkcert -CAROOT)/rootCA.pem /mnt/c/temp/wsl2-rootCA.pem
+   ```
+
+3. **Import in Windows browsers:**
+   - **Chrome/Edge:** Import `C:\temp\wsl2-rootCA.pem` into Windows certificate store
+   - **Firefox:** Import the same file manually in Firefox certificate settings
+
+#### Proxy Binding Methods
+
+**Proper method (recommended):**
+```bash
+# Find WSL2 IP that Windows can reach
+WSL_IP=$(hostname -I | awk '{print $1}')
+echo "WSL2 IP: $WSL_IP"
+
+# Start proxy bound to WSL2 IP
+./cookie-proxy --domains api.example.com --bind-address $WSL_IP
+
+# Configure Windows browser with: http://WSL_IP:8080/proxy.pac
+```
+
+**Easy method (security trade-off):**
+```bash
+# Bind to all interfaces (accessible from Windows)
+./cookie-proxy --domains api.example.com --bind-address 0.0.0.0
+
+# Configure Windows browser with: http://localhost:8080/proxy.pac
+# WARNING: Proxy accessible to entire network
+```
+
+#### Verification
+```bash
+# From WSL2, test proxy is accessible from Windows
+curl -I http://$WSL_IP:8080/proxy.pac
+# Should return 200 OK with PAC content-type
+```
 
 ## Local Development Server Setup
 

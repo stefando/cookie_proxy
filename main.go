@@ -89,10 +89,11 @@ func (cs *CookieStore) Clear(domain string) {
 }
 
 type ProxyServer struct {
-	store     *CookieStore
-	domains   []string
+	store       *CookieStore
+	domains     []string
 	cookieNames []string
-	port      int
+	port        int
+	bindAddress string
 	certManager *CertificateManager
 }
 
@@ -268,16 +269,17 @@ func (ps *ProxyServer) Start() error {
 		"port":    ps.port,
 		"domains": strings.Join(ps.domains, ", "),
 		"cookies": strings.Join(ps.cookieNames, ", "),
-		"pac_url": fmt.Sprintf("http://127.0.0.1:%d/proxy.pac", ps.port),
+		"pac_url": fmt.Sprintf("http://%s:%d/proxy.pac", ps.bindAddress, ps.port),
 	}).Info("Starting HTTPS cookie proxy")
 	
-	return http.ListenAndServe(fmt.Sprintf("127.0.0.1:%d", ps.port), proxy)
+	return http.ListenAndServe(fmt.Sprintf("%s:%d", ps.bindAddress, ps.port), proxy)
 }
 
 func main() {
 	var domains []string
 	var cookieNames []string
 	var port int
+	var bindAddress string
 	var logLevel string
 	var caCertFile string
 	var caKeyFile string
@@ -311,6 +313,7 @@ func main() {
 				domains:     domains,
 				cookieNames: cookieNames,
 				port:        port,
+				bindAddress: bindAddress,
 				certManager: certManager,
 			}
 			return server.Start()
@@ -323,6 +326,7 @@ func main() {
 	rootCmd.Flags().StringVar(&logLevel, "log-level", "info", "Logging level (debug, info, warn, error)")
 	rootCmd.Flags().StringVar(&caCertFile, "ca-cert", "", "CA certificate file path (uses mkcert CA by default)")
 	rootCmd.Flags().StringVar(&caKeyFile, "ca-key", "", "CA private key file path (uses mkcert CA by default)")
+	rootCmd.Flags().StringVar(&bindAddress, "bind-address", "127.0.0.1", "Address to bind proxy server (use 0.0.0.0 for WSL2)")
 
 	rootCmd.MarkFlagRequired("domains")
 

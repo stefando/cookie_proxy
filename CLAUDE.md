@@ -22,6 +22,12 @@ go build -o cookie-proxy .
   --ca-cert /path/to/ca.pem \
   --ca-key /path/to/ca-key.pem \
   --log-level debug
+
+# WSL2 usage (bind to all interfaces)
+./cookie-proxy \
+  --domains saas.cmddev.stefando.me \
+  --bind-address 0.0.0.0 \
+  --log-level debug
 ```
 
 ## CLI Flags
@@ -30,6 +36,7 @@ go build -o cookie-proxy .
 - `--ca-key`: CA private key file path (auto-detects mkcert CA if not provided)
 - `--cookies`: Cookie names to capture (default: session_id)
 - `--port`: Proxy port (default: 8080)
+- `--bind-address`: Address to bind proxy server (default: 127.0.0.1, use 0.0.0.0 for WSL2)
 - `--log-level`: debug, info, warn, error (default: info)
 
 ## Certificate Management
